@@ -64,3 +64,10 @@ export type CoreConfig = {
   network: Network;
   reconnect?: ReconnectConfig;
 };
+
+export type SubscribeOptions = {
+  /** Optional predicate applied before each event is emitted to this watcher.
+   *  Return `false` to suppress delivery. If the predicate throws, the event
+   *  is suppressed and a warning is logged — the engine continues running. */
+  filter?: (event: NormalizedEvent) => boolean;
+};

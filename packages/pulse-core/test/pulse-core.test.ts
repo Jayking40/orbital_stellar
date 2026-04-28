@@ -440,4 +440,75 @@ describe("pulse-core EventEngine", () => {
       expect(otherHandler).not.toHaveBeenCalled();
     });
   });
+
+  describe("subscribe() filter predicate", () => {
+    const PAYMENT_RECORD = {
+      type: "payment",
+      to: "GDEST",
+      from: "GSRC",
+      amount: "100",
+      asset_type: "native",
+      created_at: "2026-03-26T20:00:00.000Z",
+    };
+
+    it("delivers events to a watcher whose filter returns true", () => {
+      const engine = new EventEngine({ network: "testnet" });
+      const watcher = engine.subscribe("GDEST", {
+        filter: (e) => (e as { amount: string }).amount === "100",
+      });
+      const handler = vi.fn();
+      watcher.on("payment.received", handler);
+
+      engine.start();
+      latestStream().handlers.onmessage(PAYMENT_RECORD);
+
+      expect(handler).toHaveBeenCalledOnce();
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "payment.received", amount: "100" })
+      );
+    });
+
+    it("suppresses events for a watcher whose filter returns false", () => {
+      const engine = new EventEngine({ network: "testnet" });
+      const watcher = engine.subscribe("GDEST", {
+        filter: (e) => (e as { amount: string }).amount !== "100",
+      });
+      const handler = vi.fn();
+      watcher.on("payment.received", handler);
+      watcher.on("*", handler);
+
+      engine.start();
+      latestStream().handlers.onmessage(PAYMENT_RECORD);
+
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("treats a throwing filter as a reject and logs a warning without crashing the engine", () => {
+      const engine = new EventEngine({ network: "testnet" });
+      const filterError = new Error("filter boom");
+      const watcher = engine.subscribe("GDEST", {
+        filter: () => {
+          throw filterError;
+        },
+      });
+      const handler = vi.fn();
+      watcher.on("payment.received", handler);
+
+      engine.start();
+      latestStream().handlers.onmessage(PAYMENT_RECORD);
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(console.warn).toHaveBeenCalledWith(
+        "[pulse-core] subscribe() filter threw for address GDEST — treating as reject.",
+        filterError
+      );
+
+      // Engine must still be alive — subsequent unfiltered events should route fine
+      const unfiltered = engine.subscribe("GSRC");
+      const sentHandler = vi.fn();
+      unfiltered.on("payment.sent", sentHandler);
+      latestStream().handlers.onmessage(PAYMENT_RECORD);
+      expect(sentHandler).toHaveBeenCalledOnce();
+    });
+  });
 });
