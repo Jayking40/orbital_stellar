@@ -16,7 +16,6 @@ type WatcherEvent = NormalizedEvent | WatcherNotification;
  */
 export class Watcher extends EventEmitter {
   readonly address: string;
-  onStop?: (address: string) => void;
   private _stopped: boolean = false;
   private stopHandlers: Set<() => void> = new Set();
 
@@ -67,7 +66,7 @@ export class Watcher extends EventEmitter {
   addStopHandler(handler: () => void): () => void {
     if (this._stopped) {
       handler();
-      return () => {};
+      return () => { };
     }
 
     this.stopHandlers.add(handler);
@@ -89,6 +88,5 @@ export class Watcher extends EventEmitter {
     }
     this.stopHandlers.clear();
     this.removeAllListeners();
-    this.onStop?.(this.address);
   }
 }
