@@ -17,6 +17,8 @@ export type TrustlineEventType =
   | "trustline.added"
   | "trustline.removed"
   | "trustline.updated";
+/** Event type for account merges (one account merged into another). */
+export type AccountMergeEventType = "account.merged";
 /** Notification types emitted by the EventEngine during reconnection. */
 export type WatcherNotificationType =
   | "engine.reconnecting"
@@ -110,12 +112,29 @@ export type TrustlineEvent = {
 };
 
 /**
+ * A normalized account merge event from the Stellar network.
+ */
+export type AccountMergeEvent = {
+  /** The type of account merge event. */
+  type: AccountMergeEventType;
+  /** The Stellar account that was merged into another. */
+  source: string;
+  /** The Stellar account that received the merged balance. */
+  destination: string;
+  /** ISO 8601 timestamp of the merge. */
+  timestamp: string;
+  /** The original raw record from the Horizon API. */
+  raw: unknown;
+};
+
+/**
  * A union of all normalized events supported by pulse-core.
  */
 export type NormalizedEvent =
   | PaymentEvent
   | AccountOptionsEvent
-  | TrustlineEvent;
+  | TrustlineEvent
+  | AccountMergeEvent;
 
 /**
  * A notification emitted by the EventEngine during reconnection attempts.
