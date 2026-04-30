@@ -66,6 +66,7 @@ describe("pulse-core EventEngine", () => {
     log.info.mockReset();
     log.warn.mockReset();
     log.error.mockReset();
+    vi.spyOn(Math, "random").mockReturnValue(1);
   });
 
   afterEach(() => {
@@ -310,7 +311,7 @@ describe("pulse-core EventEngine", () => {
       expect.objectContaining({
         type: "engine.reconnecting",
         attempt: 1,
-        delayMs: 1000,
+        delayMs: expect.any(Number),
       })
     );
     expect(log.warn).toHaveBeenCalledWith(
@@ -329,7 +330,7 @@ describe("pulse-core EventEngine", () => {
       expect.objectContaining({
         type: "engine.reconnecting",
         attempt: 2,
-        delayMs: 2000,
+        delayMs: expect.any(Number),
       })
     );
     expect(log.warn).toHaveBeenLastCalledWith(
@@ -365,9 +366,151 @@ describe("pulse-core EventEngine", () => {
       expect.objectContaining({
         type: "engine.reconnecting",
         attempt: 1,
-        delayMs: 1000,
+        delayMs: expect.any(Number),
       })
     );
+  });
+
+  describe("backoff invariants", () => {
+    it("delay reaches maxDelayMs cap on attempt N", () => {
+      const engine = new EventEngine({
+        network: "testnet",
+        logger: log,
+        reconnect: {
+          initialDelayMs: 1000,
+          maxDelayMs: 5000,
+        },
+      });
+      engine.subscribe("GABC");
+      engine.start();
+
+      vi.spyOn(Math, "random").mockReturnValue(0.999999);
+
+      // Attempt 1: 1000ms
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("scheduled in 999ms.")
+      );
+
+      vi.advanceTimersByTime(1000);
+      // Attempt 2: 2000ms
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("scheduled in 1999ms.")
+      );
+
+      vi.advanceTimersByTime(2000);
+      // Attempt 3: 4000ms
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("scheduled in 3999ms.")
+      );
+
+      vi.advanceTimersByTime(4000);
+      // Attempt 4: 8000ms base, capped at 5000ms
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("scheduled in 4999ms.")
+      );
+    });
+
+    it("max-retries terminates the loop", () => {
+      const engine = new EventEngine({
+        network: "testnet",
+        logger: log,
+        reconnect: {
+          initialDelayMs: 100,
+          maxRetries: 2,
+        },
+      });
+      engine.subscribe("GABC");
+      engine.start();
+
+      // Attempt 1
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("attempt 1 scheduled")
+      );
+      vi.advanceTimersByTime(1000);
+
+      // Attempt 2
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("attempt 2 scheduled")
+      );
+      vi.advanceTimersByTime(1000);
+
+      // Attempt 3 -> Should fail
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.error).toHaveBeenLastCalledWith(
+        "[pulse-core] SSE reconnect stopped after 2 failed attempts."
+      );
+    });
+
+    it("attempt counter resets after engine.reconnected", () => {
+      const engine = new EventEngine({
+        network: "testnet",
+        logger: log,
+        reconnect: { initialDelayMs: 1000 },
+      });
+      engine.subscribe("GABC");
+      engine.start();
+
+      vi.spyOn(Math, "random").mockReturnValue(0.999999);
+
+      // Attempt 1
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("attempt 1 scheduled in 999ms")
+      );
+      vi.advanceTimersByTime(1000);
+
+      // Attempt 2
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("attempt 2 scheduled in 1999ms")
+      );
+      vi.advanceTimersByTime(2000);
+
+      // Reconnect success
+      latestStream().handlers.onmessage({ type: "payment", to: "GABC", from: "X", amount: "1", created_at: "now" });
+      expect(log.info).toHaveBeenCalledWith(
+        "[pulse-core] SSE reconnect succeeded on attempt 2."
+      );
+
+      // Next error should be attempt 1 again
+      latestStream().handlers.onerror(new Error("err"));
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("attempt 1 scheduled in 999ms")
+      );
+    });
+
+    it("jitter test using a seeded-like mock", () => {
+      const engine = new EventEngine({
+        network: "testnet",
+        logger: log,
+        reconnect: { initialDelayMs: 1000 },
+      });
+      engine.subscribe("GABC");
+      engine.start();
+
+      // Mock random to 0.5
+      vi.spyOn(Math, "random").mockReturnValue(0.5);
+      latestStream().handlers.onerror(new Error("err"));
+      // 1000 * 0.5 = 500
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("scheduled in 500ms.")
+      );
+
+      vi.advanceTimersByTime(500);
+      // Mock random to 0.1
+      vi.spyOn(Math, "random").mockReturnValue(0.1);
+      latestStream().handlers.onerror(new Error("err"));
+      // 2000 * 0.1 = 200
+      expect(log.warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("scheduled in 200ms.")
+      );
+    });
   });
 
   describe("set_options → account.options_changed", () => {
