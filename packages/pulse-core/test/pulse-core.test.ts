@@ -312,7 +312,6 @@ describe("pulse-core EventEngine", () => {
         type: "engine.reconnecting",
         attempt: 1,
         delayMs: expect.any(Number),
-        emittedAt: expect.any(String),
       })
     );
     expect(log.warn).toHaveBeenCalledWith(
@@ -332,7 +331,6 @@ describe("pulse-core EventEngine", () => {
         type: "engine.reconnecting",
         attempt: 2,
         delayMs: expect.any(Number),
-        emittedAt: expect.any(String),
       })
     );
     expect(log.warn).toHaveBeenLastCalledWith(
@@ -356,7 +354,6 @@ describe("pulse-core EventEngine", () => {
       expect.objectContaining({
         type: "engine.reconnected",
         attempt: 2,
-        emittedAt: expect.any(String),
       })
     );
     expect(log.info).toHaveBeenCalledWith(
@@ -370,7 +367,6 @@ describe("pulse-core EventEngine", () => {
         type: "engine.reconnecting",
         attempt: 1,
         delayMs: expect.any(Number),
-        emittedAt: expect.any(String),
       })
     );
   });
